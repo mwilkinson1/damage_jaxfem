@@ -1,0 +1,39 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Type checker / linter
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# No images / media
+*.png
+*.svg
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+
+# FE output
+*.vtu
+*.vtp
+*.vtk
+*.csv
+
+# No notebooks
+*.ipynb

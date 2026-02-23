@@ -1,0 +1,48 @@
+       __       ___      ___   ___                _______  _______ .___  ___. 
+      |  |     /   \     \  \ /  /               |   ____||   ____||   \/   | 
+      |  |    /  ^  \     \  V  /      ______    |  |__   |  |__   |  \  /  | 
+.--.  |  |   /  /_\  \     >   <      |______|   |   __|  |   __|  |  |\/|  | 
+|  `--'  |  /  _____  \   /  .  \                |  |     |  |____ |  |  |  | 
+ \______/  /__/     \__\ /__/ \__\               |__|     |_______||__|  |__| 
+                                                                              
+
+Tensile test: 10×10×1 mm, stretch 1.5 over 1001 steps (displacement 0 → 5.0 mm)
+Load steps: count=1001
+
+======================================================================
+Mesh: non_uniform (from non_uniform_mesh.inp)
+======================================================================
+  Nodes: 522, elements: 230
+
+--- non_uniform local damage ---
+[02-20 16:38:47][DEBUG] jax_fem: Computing shape function values, gradients, etc.
+[02-20 16:38:47][DEBUG] jax_fem: ele_type = HEX8, quad_points.shape = (num_quads, dim) = (8, 3)
+[02-20 16:38:47][DEBUG] jax_fem: face_quad_points.shape = (num_faces, num_face_quads, dim) = (6, 4, 3)
+[02-20 16:38:47][DEBUG] jax_fem: Done pre-computations, took 0.352125883102417 [s]
+[02-20 16:38:47][INFO] jax_fem: Solving a problem with 230 cells, 522x3 = 1566 dofs.
+[02-20 16:38:47][DEBUG] jax_fem: Computing shape function values, gradients, etc.
+[02-20 16:38:47][DEBUG] jax_fem: ele_type = HEX8, quad_points.shape = (num_quads, dim) = (8, 3)
+[02-20 16:38:47][DEBUG] jax_fem: face_quad_points.shape = (num_faces, num_face_quads, dim) = (6, 4, 3)
+[02-20 16:38:47][DEBUG] jax_fem: Done pre-computations, took 0.08520293235778809 [s]
+[02-20 16:38:47][INFO] jax_fem: Solving a problem with 230 cells, 522x1 = 522 dofs.
+  Step 1/1001: displacement = 0.000000
+  Step 2/1001: displacement = 0.005000
+  Step 3/1001: displacement = 0.010000
+  Step 4/1001: displacement = 0.015000
+  Step 5/1001: displacement = 0.020000
+  Step 6/1001: displacement = 0.025000
+  Step 7/1001: displacement = 0.030000
+  Step 8/1001: displacement = 0.035000
+  Step 9/1001: displacement = 0.040000
+  Step 10/1001: displacement = 0.045000
+  Step 11/1001: displacement = 0.050000
+  Step 12/1001: displacement = 0.055000
+  Step 13/1001: displacement = 0.060000
+  Step 14/1001: displacement = 0.065000
+  Step 15/1001: displacement = 0.070000
+  Step 16/1001: displacement = 0.075000
+  Step 17/1001: displacement = 0.080000
+  Step 18/1001: displacement = 0.085000
+  Step 19/1001: displacement = 0.090000
+  Step 20/1001: displacement = 0.095000
+  Step 21/1001: displacement = 0.100000

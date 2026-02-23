@@ -1,0 +1,8 @@
+iteration: 1
+note: Minimum Newton step stop abs(step)<1e-12.
+return_code: 124
+timed_out: True
+completed_all_steps: False
+last_step: 4
+total_steps: 1001
+last_displacement: 0.068493

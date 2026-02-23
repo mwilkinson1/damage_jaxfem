@@ -1,0 +1,14 @@
+module purge
+export APPTAINER_CACHEDIR=$SCRATCH/.apptainer_cache
+export APPTAINER_TMPDIR=$SCRATCH/.apptainer_tmp
+export APPTAINER_WORKDIR=$SCRATCH/.apptainer_work
+mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR $APPTAINER_WORKDIR
+
+# 1) Build a sandbox directly from docker (no %post yet)
+apptainer build --sandbox micromamba_sandbox docker://mambaorg/micromamba:1.5.8
+
+# 2) Now "update" sandbox with your def sections (runs %files/%post)
+apptainer build --update --sandbox micromamba_sandbox jax_fem.def
+
+# 3) Convert sandbox to final SIF
+apptainer build jax_fem.sif micromamba_sandbox
