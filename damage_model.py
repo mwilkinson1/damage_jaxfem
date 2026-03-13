@@ -15,12 +15,14 @@ def smooth_plus(x, eps=1e-8):
 
 class CoupledDamageProblem(Problem):
     
-    def custom_init(self, E, nu, kappa_thresh, eta, c_d, beta_d, local_only=False):
+    def custom_init(self, E, nu, kappa_thresh, eta, c_d, beta_d, local_only=False, config=None):
         """Initialize material and damage parameters.
 
         local_only: 7th element of additional_info. If True, c_d=0 and gamma_d=0 so
         the penalty is (beta_d/2)*phi^2 → weak form gives phi=0; kappa is driven
         only by strain energy density (history).
+        config: optional dict as 8th element of additional_info:
+            - kappa_update_method: "tmp" | "frozen"
         """
         self.fe_u = self.fes[0]
         self.fe_phi = self.fes[1]
@@ -37,6 +39,14 @@ class CoupledDamageProblem(Problem):
         self.gamma_d = 0.0 if self.local_only else 1.0
         self.c_d = 0.0 if self.local_only else float(c_d)
         self.beta_d = beta_d
+
+        cfg = {} if config is None else dict(config)
+        self.kappa_update_method = cfg.get("kappa_update_method", "tmp")
+        if self.kappa_update_method not in {"tmp", "frozen"}:
+            raise ValueError(
+                f"Unsupported kappa_update_method={self.kappa_update_method}; "
+                "expected 'tmp' or 'frozen'."
+            )
         
         # Internal variables
         num_cells = self.fe_u.num_cells
@@ -178,10 +188,11 @@ class CoupledDamageProblem(Problem):
             kappa_tmp = jax.vmap(self.local_update_kappa, in_axes=(0, 0, 0))(
                 sed_quads, phi_vals, kappa_elem
             )
+            kappa_kernel = kappa_elem if self.kappa_update_method == "frozen" else kappa_tmp
 
             phi_grads_squeezed = jnp.squeeze(phi_grads, axis=1)
             P_int = jax.vmap(self.compute_PK1_base)(
-                F, phi_grads_squeezed, phi_vals, kappa_tmp
+                F, phi_grads_squeezed, phi_vals, kappa_kernel
             )
 
             res_u = jnp.sum(P_int[:, None, :, :] * cell_v_grads_JxW_u, axis=(0, -1))
@@ -193,7 +204,7 @@ class CoupledDamageProblem(Problem):
                 cell_v_grads_JxW_phi[:, :, 0, :],
             )[:, None]
 
-            kappa_target = self.gamma_d * kappa_tmp
+            kappa_target = self.gamma_d * kappa_kernel
             penalty_drive = jax.vmap(grad_psi_wrt_phi)(phi_vals, kappa_target)
             penalty_res = jnp.sum(
                 penalty_drive[:, None] * shape_vals_phi * cell_JxW_phi[:, None],
@@ -256,4 +267,3 @@ def get_boundary_force_component(problem, sol_list, fe_index, bc_group_index):
     vec_inds = fe.vec_inds_list[bc_group_index]
     residual_at_dofs = res_list[fe_index][node_inds, vec_inds]
     return float(-jnp.sum(residual_at_dofs))
-

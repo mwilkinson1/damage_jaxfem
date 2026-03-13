@@ -1,18 +1,19 @@
 """
-Tensile test: 10×10×1 mm plate, stretch 1.5 over 51 steps.
-Three mesh densities × local and full damage → 6 result sets.
-Outputs: same VTK fields as main.py.
+Tensile test: 10×10×1 mm plate, displacement 0→5 mm over NUM_LOADS steps.
+Runs 4×2×2 combinations:
+- 4 meshes (non_uniform, coarse, medium, fine)
+- 2 damage modes (local, full/nonlocal)
+- 2 local update methods (kappa_update_method = tmp, frozen)
 
-Local formulation (ex1_local style): c_d=0 (no gradient), gamma_d active in
-damage_model when local_only=True; kappa from SED history.
+Outputs: same VTK fields as main.py.
 """
+import csv
 import os
 import sys
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 _project_root = Path(__file__).resolve().parents[2]
 _plate_model = _project_root / "plate_model"
@@ -20,15 +21,19 @@ _mrc_code = _project_root / "MRC Code"
 sys.path.insert(0, str(_plate_model))
 sys.path.insert(0, str(_mrc_code))
 
+from jax_fem import logger as jax_fem_logger
 from jax_fem.solver import solver
 from jax_fem.utils import save_sol
 from jax_fem.generate_mesh import box_mesh, Mesh
 from damage_model import CoupledDamageProblem
+from plot_progress import plot_mesh_progress
 
 jax.config.update("jax_enable_x64", True)
+jax_fem_logger.setLevel("WARNING")
 
 DAMAGE_THRESHOLD = 0.995
 OUT_DIR = Path(__file__).parent / "tensile_test_results"
+PLOTS_DIR = OUT_DIR / "plots"
 DOMAIN_X = 10.0
 DOMAIN_Y = 10.0
 DOMAIN_Z = 1.0
@@ -49,6 +54,13 @@ MESH_CONFIGS = [
     {"name": "coarse", "type": "box", "nx": 5, "ny": 5, "nz": 1},
     {"name": "medium", "type": "box", "nx": 10, "ny": 10, "nz": 1},
     {"name": "fine", "type": "box", "nx": 20, "ny": 20, "nz": 1},
+]
+LOCAL_UPDATE_METHODS = ["tmp", "frozen"]
+CASE_ORDER = [
+    ("local", "tmp"),
+    ("local", "frozen"),
+    ("full", "tmp"),
+    ("full", "frozen"),
 ]
 
 
@@ -110,12 +122,7 @@ def get_dirichlet_bc_info(displacement):
     ]
 
 
-def _save_step_vtk(coupled_prob, u_sol, phi_sol, step_idx, out_dir, file_prefix):
-    kappa = coupled_prob.internal_vars[0]
-    damage = 1 - coupled_prob.damage_function(kappa)
-    von_mises_quads = coupled_prob.compute_von_mises_quads(u_sol, phi_sol)
-    von_mises = jnp.mean(von_mises_quads, axis=1)
-
+def _save_step_vtk(coupled_prob, u_sol, phi_sol, step_idx, out_dir, file_prefix, kappa, damage, von_mises):
     vtk_filename = os.path.join(out_dir, f"{file_prefix}_sol_{step_idx}.vtk")
     save_sol(
         coupled_prob.fe_u, u_sol, vtk_filename,
@@ -133,10 +140,69 @@ def _save_step_vtk(coupled_prob, u_sol, phi_sol, step_idx, out_dir, file_prefix)
     print(f"    von_mises: [{float(jnp.min(von_mises)):.6f}, {float(jnp.max(von_mises)):.6f}]")
 
 
-def run_simulation_nonlocal(mesh, out_dir, file_prefix, local_only=False):
+def _write_case_progress_csv(progress_rows, csv_path):
+    fieldnames = [
+        "step",
+        "displacement",
+        "max_von_mises",
+        "max_kappa",
+        "max_damage",
+    ]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in progress_rows:
+            writer.writerow(row)
+
+
+def _write_mesh_comparison_csv(mesh_name, case_reports, out_dir):
+    csv_path = out_dir / f"{mesh_name}_case_comparison_max_progress.csv"
+    fieldnames = [
+        "damage_mode",
+        "kappa_update_method",
+        "step",
+        "displacement",
+        "max_von_mises",
+        "max_kappa",
+        "max_damage",
+    ]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for damage_label, update_mode in CASE_ORDER:
+            key = (damage_label, update_mode)
+            report = case_reports.get(key, {})
+            for row in report.get("progress_rows", []):
+                writer.writerow(
+                    {
+                        "damage_mode": damage_label,
+                        "kappa_update_method": update_mode,
+                        "step": row["step"],
+                        "displacement": row["displacement"],
+                        "max_von_mises": row["max_von_mises"],
+                        "max_kappa": row["max_kappa"],
+                        "max_damage": row["max_damage"],
+                    }
+                )
+    return csv_path
+
+
+def _compute_step_metrics(coupled_prob, u_sol, phi_sol):
+    kappa = coupled_prob.internal_vars[0]
+    damage = 1 - coupled_prob.damage_function(kappa)
+    von_mises_quads = coupled_prob.compute_von_mises_quads(u_sol, phi_sol)
+    von_mises = jnp.mean(von_mises_quads, axis=1)
+    max_von_mises = float(jnp.max(von_mises_quads))
+    max_kappa = float(jnp.max(kappa))
+    max_damage = float(jnp.max(damage))
+    return kappa, damage, von_mises, max_von_mises, max_kappa, max_damage
+
+
+def run_simulation_nonlocal(mesh, out_dir, file_prefix, local_only=False, kappa_update_method="tmp"):
     u_dirichlet_bc_info = get_dirichlet_bc_info(0.0)
     c_d = C_D_LOCAL if local_only else C_D
-    additional_info = (E, NU, KAPPA_THRESH, ETA, c_d, BETA_D, local_only)
+    model_config = {"kappa_update_method": kappa_update_method}
+    additional_info = (E, NU, KAPPA_THRESH, ETA, c_d, BETA_D, local_only, model_config)
 
     coupled_prob = CoupledDamageProblem(
         [mesh, mesh],
@@ -157,6 +223,9 @@ def run_simulation_nonlocal(mesh, out_dir, file_prefix, local_only=False):
 
     load_increments = jnp.linspace(0.0, MAX_DISPLACEMENT, NUM_LOADS)
     sol_list = None
+    progress_rows = []
+    converged = True
+    stop_reason = "completed"
 
     for idx, inc in enumerate(load_increments):
         inc_val = float(inc)
@@ -173,27 +242,67 @@ def run_simulation_nonlocal(mesh, out_dir, file_prefix, local_only=False):
         except (AssertionError, RuntimeError) as e:
             print(f"  Solver diverged at step {idx + 1} (displacement = {inc_val:.6f}): {e}")
             print(f"  Stopping simulation for {file_prefix} due to convergence failure.")
+            converged = False
+            stop_reason = "solver_diverged"
             break
         sol_list = [u_sol, phi_sol]
         coupled_prob.update_internal_vars(sol_list)
 
-        kappa = coupled_prob.internal_vars[0]
-        damage = 1 - coupled_prob.damage_function(kappa)
-        max_damage = float(jnp.max(damage))
-        _save_step_vtk(coupled_prob, u_sol, phi_sol, idx, out_dir, file_prefix)
+        kappa, damage, von_mises, max_von_mises, max_kappa, max_damage = _compute_step_metrics(
+            coupled_prob, u_sol, phi_sol
+        )
+        progress_rows.append(
+            {
+                "step": idx,
+                "displacement": inc_val,
+                "max_von_mises": max_von_mises,
+                "max_kappa": max_kappa,
+                "max_damage": max_damage,
+            }
+        )
+
+        _save_step_vtk(
+            coupled_prob,
+            u_sol,
+            phi_sol,
+            idx,
+            out_dir,
+            file_prefix,
+            kappa,
+            damage,
+            von_mises,
+        )
 
         if max_damage >= DAMAGE_THRESHOLD:
             print(f"  Stopping: max damage {max_damage:.6f} >= {DAMAGE_THRESHOLD}")
+            stop_reason = "damage_threshold"
             break
 
+    csv_path = out_dir / f"{file_prefix}_max_progress.csv"
+    _write_case_progress_csv(progress_rows, csv_path)
 
-def run_simulation(mesh, mesh_name, local_only, out_dir):
-    file_prefix = f"{mesh_name}_{'local' if local_only else 'full'}"
-    run_simulation_nonlocal(mesh, out_dir, file_prefix, local_only)
+    return {
+        "converged": converged,
+        "stop_reason": stop_reason,
+        "progress_rows": progress_rows,
+        "csv_path": csv_path,
+    }
+
+
+def run_simulation(mesh, mesh_name, local_only, local_update_method, out_dir):
+    file_prefix = f"{mesh_name}_{'local' if local_only else 'full'}_{local_update_method}"
+    return run_simulation_nonlocal(
+        mesh,
+        out_dir,
+        file_prefix,
+        local_only=local_only,
+        kappa_update_method=local_update_method,
+    )
 
 
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
     load_increments = jnp.linspace(0.0, MAX_DISPLACEMENT, NUM_LOADS)
     print(
         f"Tensile test: 10×10×1 mm, stretch 1.5 over {NUM_LOADS} steps "
@@ -211,13 +320,24 @@ def main():
         print(f"{'='*70}")
         mesh = create_mesh(config)
         print(f"  Nodes: {mesh.points.shape[0]}, elements: {mesh.cells.shape[0]}")
+        case_reports = {}
 
         for local_only, damage_label in [(True, "local"), (False, "full")]:
-            print(f"\n--- {mesh_name} {damage_label} damage ---")
-            run_simulation(mesh, mesh_name, local_only, OUT_DIR)
+            for local_update_method in LOCAL_UPDATE_METHODS:
+                print(
+                    f"\n--- {mesh_name} {damage_label} damage "
+                    f"(kappa_update_method={local_update_method}) ---"
+                )
+                report = run_simulation(mesh, mesh_name, local_only, local_update_method, OUT_DIR)
+                case_reports[(damage_label, local_update_method)] = report
+
+        mesh_csv = _write_mesh_comparison_csv(mesh_name, case_reports, OUT_DIR)
+        mesh_fig = plot_mesh_progress(mesh_name, case_reports, PLOTS_DIR)
+        print(f"  Saved mesh comparison CSV: {mesh_csv}")
+        print(f"  Saved mesh progression plot: {mesh_fig}")
 
     print(f"\n{'='*70}")
-    print(f"Done. Results in {OUT_DIR}")
+    print(f"Done. Results in {OUT_DIR}, plots in {PLOTS_DIR}")
     print(f"{'='*70}")
 
 

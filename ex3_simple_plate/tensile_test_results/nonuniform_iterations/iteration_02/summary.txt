@@ -1,8 +1,0 @@
-iteration: 2
-note: Cap Newton step by current bracket width.
-return_code: 124
-timed_out: True
-completed_all_steps: False
-last_step: 4
-total_steps: 1001
-last_displacement: 0.068493

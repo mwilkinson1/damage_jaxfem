@@ -204,3 +204,38 @@ def kappa_update_kkt_with_gradients(
     )
     return kappa_new, (dk_dsed, dk_dphi, dk_dkold)
 
+
+def compute_dr_dk_for_diagnostics(sed, phi, k_old, kappa_thresh, eta, beta_d, eps_sp=1e-8, phi_kappa_scale=1.0):
+    """
+    Diagnostic: compute dr_dk (derivative of Phi_d w.r.t. kappa at kappa_new) for each quad.
+    Returns (kappa_new, dr_dk) with same shape as sed. Used to check for near-zero dr_dk (Hypothesis B).
+    """
+    kappa_new = _kappa_update_kkt_impl(
+        sed, phi, k_old, kappa_thresh, eta, beta_d, eps_sp, 1e-12, 100, phi_kappa_scale
+    )
+    active = kappa_new > (k_old + 1e-14)
+
+    def damage_function(kappa):
+        return jnp.exp(-eta * smooth_plus(kappa - kappa_thresh, eps=eps_sp))
+
+    def dr_dk_active():
+        fd = damage_function(kappa_new)
+        safe_fd = jnp.maximum(fd, 1e-15)
+        inv_fd = 1.0 / safe_fd
+        dsp = smooth_plus_prime(kappa_new - kappa_thresh, eps=eps_sp)
+        dfd_dk = fd * (-eta) * dsp
+        dinv_fd_dk = -inv_fd * inv_fd * dfd_dk
+        dt_dk = jnp.where(
+            phi_kappa_scale == 0.0,
+            jnp.zeros_like(sed),
+            (-1.0) * inv_fd / eta + (phi - kappa_new) * dinv_fd_dk / eta
+        )
+        return jnp.where(
+            phi_kappa_scale == 0.0,
+            -jnp.ones_like(sed),
+            phi_kappa_scale * beta_d * dt_dk - 1.0
+        )
+
+    dr_dk = jnp.where(active, dr_dk_active(), jnp.ones_like(sed))
+    return kappa_new, dr_dk
+
