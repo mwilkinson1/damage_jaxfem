@@ -45,7 +45,11 @@ def boundary_conditions(displacement):
 
 
 def create_problem(arguments, conditions):
-    mesh_path = ROOT / f"notched_plate_C3D20_{arguments.mesh}.inp"
+    mesh_path = (
+        ROOT
+        / "meshes"
+        / f"notched_plate_C3D20_{arguments.mesh}.inp"
+    )
     mesh_data = meshio.read(mesh_path)
     mesh = Mesh(
         mesh_data.points,

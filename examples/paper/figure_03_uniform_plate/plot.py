@@ -179,9 +179,7 @@ def parse_arguments():
     parser.add_argument(
         "--mesh-image-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[3]
-        / "ex3_simple_plate"
-        / "plots",
+        default=Path(__file__).resolve().parents[3] / "meshes",
     )
     return parser.parse_args()
 

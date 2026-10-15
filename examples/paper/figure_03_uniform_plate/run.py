@@ -72,7 +72,9 @@ def create_boundary_conditions(displacement):
 
 def create_mesh(mesh_name):
     if mesh_name == "non_uniform":
-        mesh_data = meshio.read(ROOT / "ex3_simple_plate/non_uniform_mesh.inp")
+        mesh_data = meshio.read(
+            ROOT / "meshes" / "uniform_plate_nonuniform.inp"
+        )
         return Mesh(
             mesh_data.points,
             mesh_data.cells_dict["hexahedron"],
