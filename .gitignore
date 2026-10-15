@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.egg-info/
+build/
+dist/
 
 # Virtual environments
 .env
@@ -37,3 +40,12 @@ venv/
 
 # No notebooks
 *.ipynb
+
+# Local implementation notes
+/PROJECT.md
+
+# Cluster-specific launch files and generated logs
+/cluster_jobs/
+/results/
+*.log
+*.avi
